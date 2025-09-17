@@ -1,0 +1,159 @@
+# Kubernetes Deployment for Demo API
+# ==================================
+# This deployment demonstrates SRE best practices:
+# - Health and readiness probes for self-healing
+# - Resource limits for stability
+# - Multiple replicas for availability
+# - Security contexts for container hardening
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-api
+  namespace: default
+  labels:
+    app: demo-api
+    version: v1.0.0
+    component: api
+    managed-by: kubernetes
+  annotations:
+    deployment.kubernetes.io/revision: "1"
+    description: "Simple Flask API demonstrating Kubernetes deployment patterns"
+spec:
+  # Replica configuration for high availability
+  replicas: 3  # Start with 3 replicas for availability (HPA will scale this)
+  
+  # Deployment strategy for zero-downtime updates
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1        # Never go below 2 replicas during updates
+      maxSurge: 1              # Maximum 4 replicas during updates
+  
+  # Pod selector
+  selector:
+    matchLabels:
+      app: demo-api
+      component: api
+  
+  # Pod template
+  template:
+    metadata:
+      labels:
+        app: demo-api
+        component: api
+        version: v1.0.0
+      annotations:
+        prometheus.io/scrape: "true"    # Enable Prometheus scraping
+        prometheus.io/port: "5000"      # Metrics port
+        prometheus.io/path: "/metrics"  # Metrics endpoint
+    spec:
+      # Security context for the pod
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      
+      # Container specification
+      containers:
+      - name: demo-api
+        # TODO: Replace with your actual container image
+        # For now, using a placeholder - you'll need to build and push this image
+        image: demo-api:latest
+        imagePullPolicy: IfNotPresent
+        
+        # Container ports
+        ports:
+        - name: http
+          containerPort: 5000
+          protocol: TCP
+        
+        # Environment variables
+        env:
+        - name: ENVIRONMENT
+          value: "kubernetes"
+        - name: PORT
+          value: "5000"
+        - name: DEBUG
+          value: "false"
+        # Pod metadata available to application
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        
+        # Resource limits and requests for predictable performance
+        resources:
+          requests:
+            memory: "64Mi"      # Minimum memory needed
+            cpu: "50m"          # 0.05 CPU cores minimum
+          limits:
+            memory: "128Mi"     # Maximum memory allowed
+            cpu: "200m"         # 0.2 CPU cores maximum
+        
+        # Liveness probe - Kubernetes restarts pod if this fails
+        # Used to detect if application is stuck or deadlocked
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: http
+            scheme: HTTP
+          initialDelaySeconds: 30   # Wait 30s after container start
+          periodSeconds: 10         # Check every 10 seconds
+          timeoutSeconds: 5         # 5 second timeout for probe
+          successThreshold: 1       # 1 success = healthy
+          failureThreshold: 3       # 3 failures = restart pod
+        
+        # Readiness probe - Kubernetes routes traffic only when this passes
+        # Used to detect if application is ready to serve requests
+        readinessProbe:
+          httpGet:
+            path: /readiness
+            port: http
+            scheme: HTTP
+          initialDelaySeconds: 5    # Check readiness quickly after start
+          periodSeconds: 5          # Check every 5 seconds
+          timeoutSeconds: 3         # 3 second timeout
+          successThreshold: 1       # 1 success = ready for traffic
+          failureThreshold: 2       # 2 failures = remove from service
+        
+        # Startup probe - Allows slow-starting containers more time
+        # Prevents liveness/readiness probes from interfering during startup
+        startupProbe:
+          httpGet:
+            path: /healthz
+            port: http
+            scheme: HTTP
+          initialDelaySeconds: 10   # Start checking after 10s
+          periodSeconds: 5          # Check every 5 seconds
+          timeoutSeconds: 3         # 3 second timeout
+          successThreshold: 1       # 1 success = startup complete
+          failureThreshold: 6       # 6 failures (30s total) = startup failed
+        
+        # Security context for the container
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false  # Flask needs to write temporary files
+          runAsNonRoot: true
+          runAsUser: 1000
+          capabilities:
+            drop:
+            - ALL                   # Drop all Linux capabilities for security
+      
+      # Restart policy
+      restartPolicy: Always
+      
+      # DNS configuration
+      dnsPolicy: ClusterFirst
+      
+      # Termination grace period for graceful shutdowns
+      terminationGracePeriodSeconds: 30

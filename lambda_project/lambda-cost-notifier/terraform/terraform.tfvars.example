@@ -1,0 +1,31 @@
+# Example Terraform Variables Configuration
+# ========================================
+# Copy this file to terraform.tfvars and customize values for your environment
+
+# AWS Configuration
+aws_region   = "us-east-1"  # Required for Cost Explorer API
+environment  = "prod"
+
+# Email Configuration (IMPORTANT: These emails must be verified in SES)
+admin_email  = "admin@company.com"        # Recipient of cost reports (per requirements)
+sender_email = "noreply@yourcompany.com"  # Sender email (must be verified in SES)
+alert_email  = "admin@company.com"        # Recipient of alerts (can be same as admin_email)
+
+# SES Configuration
+ses_region = "us-east-1"  # Should match aws_region unless specific requirements
+
+# Scheduling (EventBridge cron expression)
+schedule_expression = "cron(0 8 * * ? *)"  # 8 AM UTC daily (adjust timezone as needed)
+
+# Logging Configuration
+log_level         = "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+log_retention_days = 30     # CloudWatch log retention period
+
+# Lambda Configuration
+function_name = "aws-cost-notifier"
+
+# Common cron expressions for reference:
+# Daily at 8 AM UTC:     "cron(0 8 * * ? *)"
+# Daily at 9 AM EST:     "cron(0 14 * * ? *)"  # 9 AM EST = 2 PM UTC
+# Daily at 6 AM PST:     "cron(0 14 * * ? *)"  # 6 AM PST = 2 PM UTC
+# Weekdays at 8 AM UTC:  "cron(0 8 ? * MON-FRI *)"

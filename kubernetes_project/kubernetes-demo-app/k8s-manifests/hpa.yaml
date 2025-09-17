@@ -1,0 +1,118 @@
+# Horizontal Pod Autoscaler for Demo API
+# ======================================
+# This HPA automatically scales the demo API based on CPU utilization
+# Demonstrates auto-scaling for handling variable load patterns
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: demo-api-hpa
+  namespace: default
+  labels:
+    app: demo-api
+    component: autoscaler
+    managed-by: kubernetes
+  annotations:
+    description: "Automatic scaling for Demo API based on CPU utilization"
+spec:
+  # Target deployment to scale
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: demo-api
+  
+  # Scaling boundaries
+  minReplicas: 2          # Never scale below 2 pods (high availability)
+  maxReplicas: 10         # Maximum 10 pods (cost control)
+  
+  # Scaling metrics
+  metrics:
+  # CPU-based scaling (primary metric)
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70    # Scale up when average CPU > 70%
+  
+  # Memory-based scaling (secondary metric)
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80    # Scale up when average memory > 80%
+  
+  # Scaling behavior configuration
+  behavior:
+    scaleUp:
+      # Scale up aggressively when needed
+      stabilizationWindowSeconds: 60    # Wait 60s before scaling up again
+      policies:
+      - type: Percent
+        value: 100                      # Can double the number of pods
+        periodSeconds: 60               # Within 60 seconds
+      - type: Pods
+        value: 2                        # Or add max 2 pods at once
+        periodSeconds: 60
+      selectPolicy: Max                 # Use the more aggressive policy
+    
+    scaleDown:
+      # Scale down conservatively to avoid thrashing
+      stabilizationWindowSeconds: 300   # Wait 5 minutes before scaling down
+      policies:
+      - type: Percent
+        value: 10                       # Remove max 10% of pods
+        periodSeconds: 60               # Within 60 seconds
+      - type: Pods
+        value: 1                        # Or remove max 1 pod at once
+        periodSeconds: 60
+      selectPolicy: Min                 # Use the more conservative policy
+
+---
+# Vertical Pod Autoscaler (VPA) - Optional
+# =======================================
+# VPA automatically adjusts resource requests/limits based on actual usage
+# Useful for right-sizing containers over time
+
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: demo-api-vpa
+  namespace: default
+  labels:
+    app: demo-api
+    component: vpa
+    managed-by: kubernetes
+  annotations:
+    description: "Vertical scaling recommendations for Demo API resource optimization"
+spec:
+  # Target deployment
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: demo-api
+  
+  # Update policy - recommender mode only (safer for production)
+  updatePolicy:
+    updateMode: "Off"     # Only provide recommendations, don't auto-update
+                         # Change to "Auto" to enable automatic resource updates
+  
+  # Resource policy for controlling VPA behavior
+  resourcePolicy:
+    containerPolicies:
+    - containerName: demo-api
+      # Don't change CPU/memory below these minimums
+      minAllowed:
+        cpu: "25m"
+        memory: "32Mi"
+      # Don't change CPU/memory above these maximums  
+      maxAllowed:
+        cpu: "500m"
+        memory: "256Mi"
+      # Control which resources VPA can modify
+      controlledResources:
+      - cpu
+      - memory
+      # Control which values VPA can modify
+      controlledValues: RequestsAndLimits

@@ -1,0 +1,82 @@
+# Kubernetes Service for Demo API
+# ===============================
+# This service provides stable network access to the demo API pods
+# Demonstrates service discovery and load balancing patterns
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-api-service
+  namespace: default
+  labels:
+    app: demo-api
+    component: service
+    managed-by: kubernetes
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"  # Use Network Load Balancer for EKS
+    service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
+    description: "Service for Demo API providing load balancing and service discovery"
+spec:
+  # Service type - LoadBalancer for external access in EKS
+  type: ClusterIP
+  
+  # Pod selector - routes traffic to pods with these labels
+  selector:
+    app: demo-api
+    component: api
+  
+  # Port configuration
+  ports:
+  - name: http
+    port: 80              # External port (what clients connect to)
+    targetPort: http      # Internal port (references container port name)
+    protocol: TCP
+  
+  # Session affinity for consistent routing (optional)
+  sessionAffinity: None   # Round-robin load balancing
+  
+  # External traffic policy for better performance
+  externalTrafficPolicy: Cluster  # Distributes traffic across all nodes
+
+---
+# ClusterIP Service for internal communication
+# ==========================================
+# Additional service for internal cluster communication
+# Useful for monitoring, internal APIs, or service mesh
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-api-internal
+  namespace: default
+  labels:
+    app: demo-api
+    component: internal-service
+    managed-by: kubernetes
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "5000"
+    prometheus.io/path: "/metrics"
+    description: "Internal service for Demo API - used for monitoring and internal access"
+spec:
+  # ClusterIP for internal-only access
+  type: ClusterIP
+  
+  # Pod selector
+  selector:
+    app: demo-api
+    component: api
+  
+  # Port configuration for internal access
+  ports:
+  - name: http
+    port: 5000           # Keep original port for internal access
+    targetPort: http     # References container port name
+    protocol: TCP
+  - name: metrics
+    port: 5000           # Same port, but named differently for clarity
+    targetPort: http
+    protocol: TCP
+  
+  # Internal session affinity
+  sessionAffinity: None
