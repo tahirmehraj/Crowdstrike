@@ -46,16 +46,6 @@ This document defines the Service Level Objectives (SLOs) for the AWS Cost Notif
 - **Monitoring**: CloudWatch alarm on Lambda Invocations metric
 - **Escalation**: Missing execution alarm after 25 hours
 
-### 4. Data Freshness SLO
-
-**Objective**: Cost reports reflect T-1 (previous day) spending data
-
-- **Measurement**: Report date alignment with AWS Cost Explorer data availability
-- **Constraint**: AWS Cost Explorer inherent T-1 data limitation
-- **Success Criteria**: Reports sent on day T contain costs for day T-1
-- **Validation**: Lambda function logs verify date consistency
-- **Monitoring**: Application-level validation in cost data retrieval
-
 ## Error Budget
 
 ### Monthly Error Budget Calculation
