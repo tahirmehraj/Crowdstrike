@@ -21,7 +21,6 @@ aws logs filter-log-events --log-group-name "/aws/lambda/aws-cost-notifier" --st
 ```
 
 **Common fixes:**
-- Cost Explorer throttling: Wait 5 minutes, retry manually
 - SES email unverified: Click verification links in email
 - Manual retry: `aws lambda invoke --function-name aws-cost-notifier output.json`
 

@@ -196,7 +196,6 @@ Email Alert Sent to Operations Team
 - **Encryption**: All AWS services use encryption in transit and at rest
 
 ### Data Privacy
-- **Cost Data**: Remains within AWS account boundary
 - **Email Content**: Processed in-memory, not persisted
 - **Tracking Data**: Stored in customer-owned DynamoDB table
 
