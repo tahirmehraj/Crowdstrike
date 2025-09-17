@@ -3,19 +3,6 @@
 
 ---
 
-## Problem Statement
-
-**Challenge**: Manual AWS cost monitoring is inefficient and error-prone
-
-- Teams lack visibility into daily spending patterns
-- Cost surprises at month-end impact budget planning
-- Manual cost checks consume valuable engineering time
-- No automated alerts for cost anomalies
-
-**Business Impact**: Reactive cost management instead of proactive optimization
-
----
-
 ## Solution Overview
 
 **Automated serverless system** that delivers daily AWS cost reports via email
