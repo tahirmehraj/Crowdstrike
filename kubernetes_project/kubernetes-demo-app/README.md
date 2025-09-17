@@ -1,324 +1,141 @@
-# Kubernetes Demo Application
+# Kubernetes Demo API
+**SRE Technical Assessment - Flask API on EKS**
 
 ## Overview
+Containerized Flask API deployed on Amazon EKS demonstrating SRE best practices including auto-scaling, health checks, monitoring, and infrastructure as code.
 
-This project demonstrates SRE best practices for deploying containerized applications on Kubernetes. It includes:
+**Endpoints:**
+- `/` - API info
+- `/hello` - Simple greeting  
+- `/healthz` - Liveness probe
+- `/readiness` - Readiness probe
+- `/metrics` - Prometheus metrics
 
-- **Simple Flask API** with health checks and metrics endpoints
-- **Production-ready EKS cluster** provisioned via Terraform
-- **Kubernetes manifests** with reliability features (probes, HPA, resource limits)
-- **Auto-scaling** based on CPU and memory utilization
-- **Observability** with Prometheus metrics and structured logging
+## Prerequisites
+- AWS CLI configured with EKS permissions
+- Terraform 1.2.0+
+- kubectl
+- Docker
+- Existing VPC, subnets, and IAM roles (see `terraform.tfvars.example`)
 
-## Architecture
+## Quick Deployment
 
-```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Internet      │    │  Load Balancer  │    │   EKS Cluster   │
-│   Traffic       │───▶│     (ALB)       │───▶│                 │
-└─────────────────┘    └─────────────────┘    │  ┌─────────────┐ │
-                                              │  │ Demo API    │ │
-                                              │  │ Pods (2-10) │ │
-                                              │  └─────────────┘ │
-                                              │                 │
-                                              │  ┌─────────────┐ │
-                                              │  │   HPA       │ │
-                                              │  │ Autoscaler  │ │
-                                              │  └─────────────┘ │
-                                              └─────────────────┘
-```
-
-## Project Structure
-
-```
-kubernetes-demo-app/
-├── app/                     # Flask application
-│   ├── app.py              # Main application with endpoints
-│   ├── Dockerfile          # Container image definition
-│   └── requirements.txt    # Python dependencies
-├── k8s-manifests/          # Kubernetes deployment files
-│   ├── deployment.yaml     # Pod deployment with probes
-│   ├── service.yaml        # Load balancer service
-│   └── hpa.yaml           # Horizontal Pod Autoscaler
-├── terraform/              # EKS infrastructure
-│   ├── main.tf            # EKS cluster and VPC
-│   ├── variables.tf       # Configuration variables
-│   ├── outputs.tf         # Cluster connection info
-│   └── terraform.tfvars.example
-└── README.md              # This file
-```
-
-## API Endpoints
-
-The Flask application provides the following endpoints:
-
-- **`GET /`** - API information and available endpoints
-- **`GET /hello`** - Simple greeting endpoint for testing
-- **`GET /healthz`** - Liveness probe for Kubernetes
-- **`GET /readiness`** - Readiness probe for Kubernetes
-- **`GET /metrics`** - Prometheus metrics for monitoring
-
-## Quick Start
-
-### Prerequisites
-
-- AWS CLI configured with appropriate permissions
-- Terraform >= 1.0
-- Docker (for building container images)
-- kubectl (for interacting with Kubernetes)
-
-### 1. Deploy EKS Cluster
-
+### 1. Infrastructure
 ```bash
-# Navigate to terraform directory
-cd terraform/
-
-# Copy and configure variables
+# Configure Terraform variables
 cp terraform.tfvars.example terraform.tfvars
-# Edit terraform.tfvars with your preferred settings
+# Edit with your VPC ID, subnet IDs, and IAM role ARNs
 
-# Initialize and deploy infrastructure
-terraform init
-terraform plan
-terraform apply
+# Deploy EKS cluster
+terraform init && terraform apply
 
 # Configure kubectl
-aws eks update-kubeconfig --region us-east-1 --name demo-app-cluster-dev
+export KUBECONFIG=$(pwd)/kubeconfig_demo-eks-cluster
+kubectl get nodes
 ```
 
-### 2. Build and Push Container Image
-
+### 2. Application
 ```bash
-# Navigate to app directory
-cd app/
+# Build and push container
+docker build -t demo-api:v1.0.0 .
+docker tag demo-api:v1.0.0 YOUR_REGISTRY/demo-api:v1.0.0
+docker push YOUR_REGISTRY/demo-api:v1.0.0
 
-# Build the Docker image
-docker build -t demo-api:latest .
-
-# Tag and push to ECR (replace with your ECR URI)
-aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin <account-id>.dkr.ecr.us-east-1.amazonaws.com
-docker tag demo-api:latest <account-id>.dkr.ecr.us-east-1.amazonaws.com/demo-api:latest
-docker push <account-id>.dkr.ecr.us-east-1.amazonaws.com/demo-api:latest
+# Update image in deployment.yaml, then deploy
+kubectl apply -f deployment.yaml
+kubectl apply -f service.yaml  
+kubectl apply -f hpa.yaml
 ```
 
-### 3. Deploy Application
-
+### 3. Verify
 ```bash
-# Update image in deployment.yaml
-# Replace "demo-api:latest" with your ECR image URI
-
-# Deploy to Kubernetes
-kubectl apply -f k8s-manifests/
-
-# Verify deployment
 kubectl get pods -l app=demo-api
-kubectl get services
-kubectl get hpa
+kubectl port-forward svc/demo-api-service 8080:80
+curl http://localhost:8080/hello
 ```
 
-### 4. Access Application
+## Configuration
 
+**Key Terraform Variables:**
+```hcl
+cluster_name       = "demo-eks-cluster"
+vpc_id            = "vpc-xxxxx" 
+subnet_ids        = ["subnet-a", "subnet-b", "subnet-c"]
+cluster_role_arn  = "arn:aws:iam::account:role/eks-cluster-role"
+node_group_role_arn = "arn:aws:iam::account:role/eks-nodegroup-role"
+```
+
+**Kubernetes Features:**
+- 3 replicas with rolling updates
+- HPA: 2-10 pods based on CPU (70%) and memory (80%)
+- Health/readiness probes with proper timing
+- Resource limits: 128Mi memory, 200m CPU
+- Security: non-root user, dropped capabilities
+
+## Monitoring
 ```bash
-# Get load balancer URL
-kubectl get service demo-api-service -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
-
-# Test endpoints
-curl http://<load-balancer-url>/hello
-curl http://<load-balancer-url>/healthz
-curl http://<load-balancer-url>/metrics
-```
-
-## SRE Features Demonstrated
-
-### 1. Health Checks and Self-Healing
-
-```yaml
-# Liveness probe - restarts unhealthy pods
-livenessProbe:
-  httpGet:
-    path: /healthz
-    port: http
-  initialDelaySeconds: 30
-  periodSeconds: 10
-  failureThreshold: 3
-
-# Readiness probe - controls traffic routing
-readinessProbe:
-  httpGet:
-    path: /readiness
-    port: http
-  initialDelaySeconds: 5
-  periodSeconds: 5
-  failureThreshold: 2
-```
-
-### 2. Auto-Scaling
-
-```yaml
-# HPA scales based on CPU/memory utilization
-metrics:
-- type: Resource
-  resource:
-    name: cpu
-    target:
-      type: Utilization
-      averageUtilization: 70
-```
-
-### 3. Resource Management
-
-```yaml
-# Resource limits prevent resource starvation
-resources:
-  requests:
-    memory: "64Mi"
-    cpu: "50m"
-  limits:
-    memory: "128Mi"
-    cpu: "200m"
-```
-
-### 4. Observability
-
-- **Structured logging** for debugging
-- **Prometheus metrics** for monitoring
-- **Health check endpoints** for status verification
-- **Pod labels and annotations** for service discovery
-
-## Monitoring and Troubleshooting
-
-### Check Application Status
-
-```bash
-# View pod status
+# Check application health
 kubectl get pods -l app=demo-api
+kubectl top pods -l app=demo-api
 
-# Check pod logs
+# View metrics
+kubectl port-forward svc/demo-api-service 8080:80
+curl http://localhost:8080/metrics
+
+# Check HPA scaling
+kubectl get hpa demo-api-hpa
+```
+
+## Common Operations
+
+**Scaling:**
+```bash
+kubectl scale deployment demo-api --replicas=5
+kubectl get hpa demo-api-hpa
+```
+
+**Updates:**
+```bash
+kubectl set image deployment/demo-api demo-api=new-image:tag
+kubectl rollout status deployment/demo-api
+kubectl rollout undo deployment/demo-api  # if needed
+```
+
+**Troubleshooting:**
+```bash
+kubectl describe pods -l app=demo-api
 kubectl logs -l app=demo-api --tail=50
-
-# Describe deployment
-kubectl describe deployment demo-api
-
-# Check HPA status
-kubectl get hpa
-kubectl describe hpa demo-api-hpa
+kubectl get events --sort-by=.metadata.creationTimestamp
 ```
 
-### Load Testing (Trigger Auto-Scaling)
+## Security Features
+- Container runs as non-root user (UID 1000)
+- Security contexts with dropped capabilities
+- Resource limits prevent resource exhaustion
+- Network security groups with minimal required access
 
-```bash
-# Create a temporary pod for load testing
-kubectl run load-test --image=busybox --rm -it -- /bin/sh
-
-# Inside the pod, generate load
-while true; do wget -q -O- http://demo-api-service:5000/hello; done
+## Architecture
+```
+AWS EKS Cluster
+├── Node Group (t3.medium, 2-6 nodes)
+├── Demo API Deployment (3 replicas)
+│   ├── Flask app with health endpoints
+│   ├── Prometheus metrics exposure
+│   └── Auto-scaling via HPA
+├── Service (ClusterIP with load balancing)
+└── Monitoring integration ready
 ```
 
-### View Metrics
-
-```bash
-# Port forward to access metrics locally
-kubectl port-forward service/demo-api-internal 5000:5000
-
-# View metrics in browser
-curl http://localhost:5000/metrics
-```
-
-## Configuration Options
-
-### Environment Variables
-
-The application supports these environment variables:
-
-- `ENVIRONMENT` - Application environment (development, kubernetes, production)
-- `PORT` - Server port (default: 5000)
-- `DEBUG` - Enable debug mode (true/false)
-
-### Terraform Variables
-
-Key configuration options in `terraform.tfvars`:
-
-- `aws_region` - AWS region for deployment
-- `environment` - Environment name (dev, staging, prod)
-- `node_instance_types` - EC2 instance types for worker nodes
-- `node_group_min_size` - Minimum number of worker nodes
-- `node_group_max_size` - Maximum number of worker nodes
+## Files
+- `main.tf` - EKS cluster and node group
+- `deployment.yaml` - Application deployment with HPA
+- `service.yaml` - Load balancer service  
+- `app.py` - Flask API with health checks
+- `Dockerfile` - Multi-stage container build
+- `requirements.txt` - Python dependencies
 
 ## Cost Optimization
-
-### Development Environment
-
-```bash
-# Use smaller instances and single NAT gateway
-node_instance_types = ["t3.small"]
-single_nat_gateway = true
-node_group_min_size = 1
-node_group_desired_size = 1
-```
-
-### Production Environment
-
-```bash
-# Use larger instances and multiple NAT gateways for HA
-node_instance_types = ["t3.large"]
-single_nat_gateway = false
-node_group_min_size = 3
-node_group_desired_size = 3
-```
-
-## Security Best Practices
-
-### Container Security
-
-- **Non-root user** in container
-- **Read-only root filesystem** where possible
-- **Dropped Linux capabilities**
-- **Resource limits** to prevent abuse
-
-### Kubernetes Security
-
-- **Network policies** for traffic control
-- **RBAC** for access control
-- **Pod security standards** enforcement
-- **Secrets management** for sensitive data
-
-### Infrastructure Security
-
-- **Private subnets** for worker nodes
-- **Security groups** with least privilege
-- **VPC endpoints** for AWS service access
-- **Encryption** for data at rest and in transit
-
-## Cleanup
-
-```bash
-# Delete Kubernetes resources
-kubectl delete -f k8s-manifests/
-
-# Destroy infrastructure
-cd terraform/
-terraform destroy
-```
-
-## Next Steps
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Pod stuck in Pending**
-   - Check node capacity: `kubectl describe nodes`
-   - Verify resource requests vs available resources
-
-2. **Load balancer not accessible**
-   - Check security groups allow inbound traffic
-   - Verify AWS Load Balancer Controller is running
-
-3. **HPA not scaling**
-   - Ensure metrics server is installed: `kubectl get deployment metrics-server -n kube-system`
-   - Check resource requests are defined in deployment
-
-4. **Container image pull errors**
-   - Verify ECR permissions
-   - Check image URI in deployment.yaml
+- t3.medium instances (2-6 nodes): ~$60-180/month
+- EKS control plane: $72/month
+- Use spot instances and cluster autoscaler for production
 
