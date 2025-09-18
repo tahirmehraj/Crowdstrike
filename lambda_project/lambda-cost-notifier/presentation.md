@@ -5,8 +5,6 @@
 
 ## Slide 1: Problem & Objective
 
-**Challenge**: Manual AWS cost monitoring leads to delayed visibility and budget overruns
-
 **Solution**: Automated serverless system delivering daily cost reports via email
 
 **Assessment Requirements Met**:
@@ -197,11 +195,3 @@ EXECUTION FLOW:
 **Questions?**
 
 ---
-
-## Appendix: Technical Deep Dive
-
-**Available if time permits**:
-- Terraform module structure and best practices
-- Lambda function code walkthrough
-- CloudWatch Logs Insights queries for troubleshooting
-- Error budget calculations and SLO mathematics
