@@ -118,7 +118,8 @@ EXECUTION FLOW:
 
 **Additional Security**:
 - ✅ **No secrets in code** - Environment variables only
-- ✅ **Encryption** - In-transit and at-rest by default
+- ✅ **Encryption in-transit** - TLS 1.2+ for all AWS API calls
+- ⚠️ **Encryption at-rest** - AWS service defaults (not explicitly configured)
 - ✅ **Resource scoping** - ARN-based permissions
 - ✅ **Account boundary** - All data stays in AWS account
 

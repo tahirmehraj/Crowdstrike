@@ -1,18 +1,19 @@
-# System Architecture
+# System Architecture - Actual Implementation
 ## Kubernetes Demo API - SRE Technical Assessment
 
 ### Overview
-Flask API on Amazon EKS demonstrating cloud-native SRE practices with auto-scaling, health checks, and comprehensive observability.
+Flask API deployed on Amazon EKS demonstrating SRE practices with auto-scaling, health checks, and basic observability. Uses existing AWS infrastructure components.
 
---- 
+---
 
 ## Core Components
 
-### Infrastructure (Terraform)
-- **EKS Cluster**: Kubernetes 1.28, multi-AZ deployment
-- **Node Group**: 2-6 t3.medium instances, auto-scaling enabled
-- **Networking**: Existing VPC with private subnets across 3 AZs
-- **Security**: Minimal security group, IAM roles with least privilege
+### Infrastructure (Terraform - Simplified)
+- **EKS Cluster**: Basic managed Kubernetes control plane
+- **Managed Node Group**: 2-4 t3.medium instances with auto-scaling
+- **Networking**: Uses existing VPC and private subnets
+- **Security**: Basic security group with self-referencing rules
+- **IAM**: Uses existing cluster and node group roles (created manually)
 
 ### Application (Kubernetes)
 ```yaml
@@ -23,13 +24,13 @@ Deployment:
   - Security: non-root user, dropped capabilities
 
 Service:
-  - Type: ClusterIP
-  - Load balancing: Round-robin across healthy pods
+  - Type: LoadBalancer (AWS Network Load Balancer)
+  - External access: Internet-facing NLB
   - Port: 80 → 5000
 
 HPA:
-  - Scale: 2-10 pods based on CPU (70%) & memory (80%)
-  - Behavior: Aggressive scale-up, conservative scale-down
+  - Scale: 2-10 pods based on CPU (70%) & memory (60%)
+  - Requires manual metrics-server installation
 ```
 
 ### Flask Application
@@ -42,164 +43,205 @@ Endpoints:
   /metrics    # Prometheus metrics
 
 Features:
-  - Structured logging with JSON format
+  - Structured logging with correlation IDs
   - System metrics (CPU, memory via psutil)
-  - Graceful error handling
-  - Environment-aware configuration
+  - Graceful shutdown handling
+  - Pod metadata injection
 ```
 
 ---
 
-## Data Flow
+## Actual Data Flow
 
 ### Request Flow
 ```
-Client → Service (ClusterIP) → Pod (Flask API) → Response
-         ↓
-    Load balances across 3 healthy pods
+Internet → AWS NLB → Pod (Flask API) → Response
+           ↓
+    Load balances across healthy pods in existing VPC
 ```
 
-### Auto-Scaling Flow
+### Infrastructure Dependencies
 ```
-Pod Metrics → HPA → Scaling Decision → Deployment → New/Removed Pods
+Manual Prerequisites:
+  - VPC with private subnets
+  - NAT gateway for internet access
+  - EKS cluster IAM role with AmazonEKSClusterPolicy
+  - Node group IAM role with worker policies
+
+Terraform Creates:
+  - EKS cluster resource
+  - Managed node group
+  - Basic security group
+  - Kubeconfig file
 ```
 
-### Health Check Flow
+### Scaling Dependencies
 ```
-kubelet → Liveness Probe (GET /healthz every 10s) → Pod restart if failed
-kubelet → Readiness Probe (GET /readiness every 5s) → Traffic routing
+Simple Installation:
+  - metrics-server: kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+  
+Kubernetes Native:
+  - HPA reads metrics-server data
+  - Scales deployment replicas
+  - Node group auto-scaling handles capacity
 ```
 
 ---
 
-## Security Model
+## Security Implementation
 
 ### Network Security
-- **VPC**: Private subnets with NAT gateway egress
-- **Security Group**: Self-referencing rules only
-- **EKS**: Managed control plane with AWS security
+- **Existing VPC**: Uses customer-provided private subnets
+- **Security Group**: Self-referencing traffic only
+- **EKS API**: Public endpoint (configurable)
+- **Worker Nodes**: Private subnets with NAT gateway egress
+
+### IAM Security
+- **Cluster Role**: Manually created with minimal EKS permissions
+- **Node Role**: Manually created with worker node policies
+- **RBAC**: Uses EKS default service account permissions
 
 ### Container Security
 - **User**: Non-root execution (UID 1000)
 - **Capabilities**: All Linux capabilities dropped
-- **Resources**: Memory/CPU limits prevent DoS attacks
-- **Image**: Multi-stage build, minimal attack surface
+- **Resources**: Strict memory/CPU limits
+- **Registry**: Customer-provided container registry
 
 ---
 
-## Observability
+## Observability - Current State
 
-### Metrics (Prometheus format)
+### Metrics Available
 ```
-demo_app_uptime_seconds          # Application uptime
-demo_app_cpu_usage_percent       # System CPU utilization  
-demo_app_memory_usage_percent    # System memory usage
-demo_app_ready                   # Readiness state (1/0)
-demo_app_info{version,env}       # Application metadata
+# Application metrics from /metrics endpoint
+demo_app_uptime_seconds
+demo_app_host_cpu_percent  
+demo_app_host_memory_percent
+demo_app_host_memory_bytes
+demo_app_ready
+demo_app_info{version,env,pod,node}
+
+# Kubernetes native metrics (requires metrics-server)
+kubectl top nodes
+kubectl top pods
 ```
 
 ### Health Monitoring
-- **Startup**: 10s delay, 5s interval, 6 failures = 30s max startup
-- **Liveness**: 30s delay, 10s interval, 3 failures = pod restart  
-- **Readiness**: 5s delay, 5s interval, 2 failures = traffic removal
+- **Liveness**: HTTP GET /healthz every 10s
+- **Readiness**: HTTP GET /readiness every 5s  
+- **Startup**: HTTP GET /healthz with extended failure tolerance
+- **Logging**: Structured JSON to stdout → `kubectl logs`
 
-### Logging
-- Structured JSON logs to stdout
-- Kubernetes log aggregation via `kubectl logs`
-- Request/response logging with correlation IDs
-
----
-
-## Scaling Strategy
-
-### Horizontal Scaling (HPA)
-```
-Triggers:
-  CPU > 70% → Scale up (aggressive, 100% increase)
-  Memory > 80% → Scale up
-  Load decrease → Scale down (conservative, 10% reduction)
-
-Boundaries:
-  Min: 2 pods (HA requirement)
-  Max: 10 pods (cost control)
-  Stabilization: 60s up, 300s down
-```
-
-### Infrastructure Scaling
-```
-Node Group Auto-scaling:
-  Min: 2 nodes
-  Max: 6 nodes  
-  Instance: t3.medium
-  Trigger: Pod scheduling pressure
-```
+### Limitations
+- **No Prometheus server**: Metrics endpoint exists but no collection
+- **No Grafana dashboards**: Visualization not implemented
+- **No alerting**: No alert manager or notification setup
+- **Basic monitoring**: Relies on `kubectl` commands for troubleshooting
 
 ---
 
-## Failure Handling
+## Cost Model - Actual Implementation
 
-### Pod-Level
-- **Health check failure**: Automatic restart via liveness probe
-- **Traffic readiness**: Removed from service until ready
-- **Resource limits**: OOMKill protection with graceful restart
-
-### Node-Level  
-- **Node failure**: Pods rescheduled to healthy nodes
-- **AZ failure**: Multi-AZ deployment maintains availability
-- **Capacity**: Auto-scaling adds nodes when needed
-
-### Application-Level
-- **Startup grace period**: 30s for initialization
-- **Graceful shutdown**: 30s termination grace period
-- **Error responses**: Proper HTTP status codes with structured errors
-
----
-
-## Cost Model
-
-### Current Costs (Monthly)
+### Monthly Costs
 - **EKS Control Plane**: $72 (fixed)
-- **EC2 Instances**: $60-180 (2-6 t3.medium nodes)  
-- **Storage**: $10 (EBS volumes)
-- **Networking**: Minimal (internal traffic)
-- **Total**: ~$145-265/month
+- **EC2 Instances**: 
+  - 2 t3.medium: ~$60/month (minimum)
+  - 4 t3.medium: ~$120/month (maximum)
+- **Network Load Balancer**: ~$16-22/month
+- **Data Transfer**: Variable based on usage
+- **Storage**: Minimal EBS costs
+- **Total**: ~$150-215/month
 
-### Cost Optimization
-- **HPA**: Dynamic scaling reduces over-provisioning
-- **Resource limits**: Prevents waste
-- **Spot instances**: Architecture supports spot nodes
-- **Right-sizing**: Regular utilization review
-
----
-
-## Key SRE Principles Demonstrated
-
-**Reliability**: Multi-AZ deployment, health checks, auto-scaling
-**Observability**: Metrics, logging, health endpoints, monitoring-ready
-**Security**: Defense in depth, least privilege, container hardening  
-**Scalability**: Horizontal/vertical scaling, resource management
-**Automation**: Infrastructure as code, self-healing via probes
-**Cost Management**: Resource limits, dynamic scaling, optimization
+### Cost Dependencies
+- **VPC/NAT**: Customer responsibility (existing infrastructure)
+- **Container Registry**: Customer choice (ECR, DockerHub, etc.)
+- **Monitoring**: None deployed (additional cost if added)
 
 ---
 
-## Files Structure
-```
-terraform/
-├── main.tf              # EKS cluster and node group
-├── variables.tf         # Input parameters  
-├── outputs.tf           # Cluster connection info
-├── terraform.tfvars     # Environment-specific values
-└── kubeconfig.tpl       # kubectl access template
+## Operational Readiness
 
-kubernetes/
-├── deployment.yaml      # Application deployment with HPA
-├── service.yaml         # Load balancer service
-└── hpa.yaml            # Horizontal pod autoscaler
+### What Works Out of Box
+- **Application deployment**: All manifests ready
+- **Health checks**: Comprehensive probe configuration
+- **Auto-scaling**: HPA functional once metrics-server installed
+- **Load balancing**: AWS NLB handles traffic distribution
+- **Security**: Container and network hardening applied
 
-application/
-├── app.py              # Flask API with health endpoints
-├── Dockerfile          # Multi-stage container build
-├── requirements.txt    # Python dependencies
-└── README.md          # Setup and operations guide
+### Manual Setup Required
+- **Infrastructure prerequisites**: VPC, subnets, IAM roles
+- **Metrics server**: `kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml`
+- **Container registry**: Build and push demo-api image
+- **kubectl configuration**: Use generated kubeconfig file
+- **Monitoring stack**: No automated deployment
+
+### Operational Commands
+```bash
+# Deployment
+terraform apply
+kubectl apply -f deployment.yaml -f service.yaml -f hpa.yaml
+
+# Verification  
+kubectl get pods -l app=demo-api
+kubectl get svc demo-api-service
+kubectl describe hpa demo-api-hpa
+
+# Troubleshooting
+kubectl logs -l app=demo-api --tail=50
+kubectl describe pods -l app=demo-api
+kubectl top pods -l app=demo-api
 ```
+
+---
+
+## Terraform Architecture Pattern
+
+### Resource Creation Strategy
+```hcl
+# What Terraform Creates
+├── aws_eks_cluster (control plane)
+├── aws_eks_node_group (worker nodes)  
+├── aws_security_group (cluster networking)
+└── local_file (kubeconfig)
+
+# What Must Exist (Prerequisites)
+├── VPC and subnets (customer provided)
+├── IAM cluster role (customer created)
+├── IAM node group role (customer created)
+└── Container registry (customer choice)
+```
+
+### Integration Points
+- **AWS CLI**: Used for EKS authentication in kubeconfig
+- **kubectl**: Generated config connects to cluster
+- **Container Runtime**: EKS manages Docker/containerd
+- **AWS Load Balancer Controller**: Auto-provisioned for LoadBalancer services
+
+---
+
+## SRE Principles Demonstrated
+
+**Reliability**: Health checks, multi-replica deployment, auto-scaling
+**Simplicity**: Minimal infrastructure, existing resource reuse  
+**Observability**: Metrics endpoints, structured logging, health probes
+**Security**: Container hardening, network isolation, IAM integration
+**Automation**: Infrastructure as code, rolling deployments
+**Cost Awareness**: Resource limits, instance type selection, auto-scaling boundaries
+
+---
+
+## Current Limitations & Trade-offs
+
+### Simplifications Made
+- **No VPC creation**: Assumes existing network infrastructure
+- **Manual IAM setup**: Avoids complex permission management in Terraform
+- **Basic monitoring**: Metrics endpoints without collection infrastructure
+- **Single region**: No multi-region redundancy
+- **Manual metrics-server**: Not automated in Terraform deployment
+
+### Production Enhancements Needed
+- **Monitoring stack**: Prometheus, Grafana, AlertManager
+- **Ingress controller**: Replace LoadBalancer with ingress for cost optimization
+- **GitOps**: CI/CD pipeline for automated deployments
+- **Backup strategy**: Persistent volume and configuration backup
+- **Multi-environment**: Separate dev/staging/prod configurations

@@ -26,7 +26,7 @@ node_group_role_arn= "arn:aws:iam::123456789012:role/eks-nodegroup-role"    # Re
 node_instance_type = "t3.medium"    # Type of EC2 instance (t3.medium = 2 vCPUs, 4 GB RAM)
 node_desired       = 2              # Start with 2 nodes
 node_min           = 2              # Never scale below 2 nodes
-node_max           = 6              # Never scale above 6 nodes
+node_max           = 4              # Never scale above 4 nodes
 
 # Tags to help organize and track costs
 tags = {

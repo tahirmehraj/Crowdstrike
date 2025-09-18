@@ -71,7 +71,7 @@ variable "node_min" {
 variable "node_max" {
   description = "Max capacity for the managed node group"
   type        = number
-  default     = 10
+  default     = 4
 }
 
 // Tags to apply to all AWS resources (for organization and billing)
