@@ -90,7 +90,16 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: spec.nodeName
-        
+        - name: CPU_LIMIT_MILLICORES
+          valueFrom:
+            resourceFieldRef:
+              resource: limits.cpu
+              divisor: 1m
+        - name: MEMORY_LIMIT_BYTES
+          valueFrom:
+            resourceFieldRef:
+              resource: limits.memory
+              divisor: 1
         # Resource limits and requests for predictable performance
         resources:
           requests:

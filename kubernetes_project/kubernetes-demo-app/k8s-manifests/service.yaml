@@ -1,7 +1,7 @@
-# Kubernetes Service for Demo API
-# ===============================
-# This service provides stable network access to the demo API pods
-# Demonstrates service discovery and load balancing patterns
+# Kubernetes Service for Demo API - LoadBalancer Configuration
+# ============================================================
+# This service creates an AWS Network Load Balancer for external access
+# Provides internet-facing endpoint for the Flask API
 
 apiVersion: v1
 kind: Service
@@ -13,70 +13,39 @@ metadata:
     component: service
     managed-by: kubernetes
   annotations:
-    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"  # Use Network Load Balancer for EKS
-    service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
-    description: "Service for Demo API providing load balancing and service discovery"
-spec:
-  # Service type - LoadBalancer for external access in EKS
-  type: ClusterIP
-  
-  # Pod selector - routes traffic to pods with these labels
-  selector:
-    app: demo-api
-    component: api
-  
-  # Port configuration
-  ports:
-  - name: http
-    port: 80              # External port (what clients connect to)
-    targetPort: http      # Internal port (references container port name)
-    protocol: TCP
-  
-  # Session affinity for consistent routing (optional)
-  sessionAffinity: None   # Round-robin load balancing
-  
-  # External traffic policy for better performance
-  externalTrafficPolicy: Cluster  # Distributes traffic across all nodes
+    # AWS LoadBalancer configuration for EKS
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"                    # Use Network Load Balancer
+    service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"     # External access from internet
+    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
 
----
-# ClusterIP Service for internal communication
-# ==========================================
-# Additional service for internal cluster communication
-# Useful for monitoring, internal APIs, or service mesh
-
-apiVersion: v1
-kind: Service
-metadata:
-  name: demo-api-internal
-  namespace: default
-  labels:
-    app: demo-api
-    component: internal-service
-    managed-by: kubernetes
-  annotations:
+    # Prometheus monitoring annotations
     prometheus.io/scrape: "true"
     prometheus.io/port: "5000"
     prometheus.io/path: "/metrics"
-    description: "Internal service for Demo API - used for monitoring and internal access"
+
+    # Service description
+    description: "LoadBalancer service for Demo API providing external internet access"
 spec:
-  # ClusterIP for internal-only access
-  type: ClusterIP
-  
-  # Pod selector
+  # LoadBalancer type creates AWS Network Load Balancer
+  type: LoadBalancer
+
+  # Pod selector - routes traffic to pods with these exact labels
   selector:
     app: demo-api
     component: api
-  
-  # Port configuration for internal access
+
+  # Port configuration
   ports:
   - name: http
-    port: 5000           # Keep original port for internal access
-    targetPort: http     # References container port name
+    port: 80              # External port (what internet clients connect to)
+    targetPort: 5000      # Internal port (where Flask app listens)
     protocol: TCP
-  - name: metrics
-    port: 5000           # Same port, but named differently for clarity
-    targetPort: http
-    protocol: TCP
-  
-  # Internal session affinity
-  sessionAffinity: None
+
+  # LoadBalancer-specific settings
+  sessionAffinity: None                    # Round-robin load balancing
+  externalTrafficPolicy: Cluster          # Distribute traffic across all nodes
+
+  # Optional: Specify source IP ranges that can access the LoadBalancer
+  # loadBalancerSourceRanges:
+  # - "0.0.0.0/0"  # Allow from anywhere (default)
+  # - "10.0.0.0/8"  # Restrict to private networks only
