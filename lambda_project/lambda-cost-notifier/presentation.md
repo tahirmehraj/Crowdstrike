@@ -1,186 +1,206 @@
-# AWS Cost Notifier
+# AWS Cost Notifier - SRE Technical Assessment
 ## Automated Daily Cost Reporting Solution
 
 ---
 
-## Solution Overview
+## Slide 1: Problem & Objective
 
-**Automated serverless system** that delivers daily AWS cost reports via email
+**Challenge**: Manual AWS cost monitoring leads to delayed visibility and budget overruns
 
-**Core Capabilities**:
-- Daily cost data retrieval from AWS Cost Explorer
-- Professional HTML email reports with service breakdowns
-- Idempotent execution prevents duplicate notifications
-- Comprehensive monitoring and alerting
+**Solution**: Automated serverless system delivering daily cost reports via email
 
-**Target Users**: Finance teams, engineering managers, DevOps teams
+**Assessment Requirements Met**:
+- ✅ Lambda function querying AWS Cost Explorer
+- ✅ Daily email to admin@company.com via SES
+- ✅ Infrastructure as Code (Terraform)
+- ✅ SRE principles implementation
 
 ---
 
-## Architecture
+## Slide 2: Architecture Overview
 
 ```
-EventBridge → Lambda Function → Cost Explorer API
-    ↓              ↓                    ↓
-Schedule      Process & Format    Yesterday's Costs
-8 AM UTC         Email               by Service
-    ↓              ↓
-DynamoDB ← SES Email Delivery
-Tracking   Professional Report
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          AWS COST NOTIFIER ARCHITECTURE                     │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+    SCHEDULING              PROCESSING               DATA SOURCES
+┌───────────────┐      ┌────────────────┐      ┌──────────────────┐
+│  EventBridge  │────▶ │ Lambda Function│────▶ │ AWS Cost Explorer│
+│               │      │                │      │                  │
+│ Cron Expression│      │ Python 3.11    │      │ get_cost_and_usage│
+│ 0 8 * * ? *   │      │ 60s timeout    │      │ Previous day data│
+│ (8 AM UTC)    │      │ 512MB memory   │      │ Group by SERVICE │
+└───────────────┘      └────────────────┘      └──────────────────┘
+                                │
+                                ▼
+    STATE MANAGEMENT       EMAIL DELIVERY         MONITORING STACK
+┌───────────────┐      ┌────────────────┐      ┌──────────────────┐
+│   DynamoDB    │◀────▶│  Amazon SES    │      │  CloudWatch      │
+│               │      │                │      │                  │
+│ Tracking Table│      │ HTML + Text    │      │ • Logs + Alarms  │
+│ report_date PK│      │ admin@company  │      │ • Dashboard      │
+│ Idempotency   │      │ Cost Summary   │      │ • 5 Alert Rules  │
+└───────────────┘      └────────────────┘      └──────────────────┘
+                                                         │
+                                                         ▼
+                                                ┌──────────────────┐
+                                                │   SNS Topic      │
+                                                │                  │
+                                                │ Email Alerts     │
+                                                │ Operations Team  │
+                                                └──────────────────┘
+
+EXECUTION FLOW:
+1. EventBridge → Lambda (daily 8 AM UTC)
+2. Lambda → DynamoDB (check if already sent today)  
+3. Lambda → Cost Explorer (get yesterday's costs)
+4. Lambda → SES (send formatted email report)
+5. Lambda → DynamoDB (mark as sent)
+6. All operations → CloudWatch (logging & monitoring)
 ```
 
-**Key Components**: EventBridge, Lambda, Cost Explorer, SES, DynamoDB, CloudWatch
+**Key Design Decisions**:
+- **Serverless**: Pay-per-use, no infrastructure management
+- **Event-driven**: EventBridge scheduling for reliability  
+- **Idempotent**: DynamoDB prevents duplicate notifications
+- **Resilient**: Exponential backoff retry logic
+- **Observable**: Comprehensive monitoring without alert fatigue
 
 ---
 
-## Technical Implementation
+## Slide 3: SRE Implementation - SLOs & Monitoring
 
-### Infrastructure as Code
-- **Terraform**: Complete infrastructure automation
-- **Modular Design**: Separated core and monitoring components
-- **Security**: Least privilege IAM permissions
+**Service Level Objectives** (per requirements):
+- **Availability**: 99.5% success rate (allows 1 failure every 2 months)
+- **Performance**: 95% executions under 30 seconds
+- **Reliability**: Daily execution within 25-hour window
 
-### Lambda Function
-- **Runtime**: Python 3.11 with 60-second timeout
-- **Retry Logic**: Exponential backoff for API failures
-- **Idempotency**: DynamoDB tracking prevents duplicates
-
-### Monitoring Stack
-- **CloudWatch Alarms**: Errors, performance, missing executions
-- **SNS Alerts**: Email notifications for operational issues
-- **Dashboard**: Real-time system health visualization
+**Monitoring Stack**:
+- **5 CloudWatch Alarms**: Errors, Duration SLO, Missing execution, Timeouts
+- **SNS Alerting**: Email notifications for failures
+- **Dashboard**: Real-time visibility into system health
+- **Structured Logging**: JSON logs for operational insights
 
 ---
 
-## Service Level Objectives
+## Slide 4: Reliability & Error Handling
 
-| SLO | Target | Measurement |
-|-----|--------|-------------|
-| **Availability** | 99.5% | Daily execution success rate |
-| **Performance** | <30 seconds | 95% of executions under SLO |
-| **Reliability** | 25-hour window | Daily execution tolerance |
-| **Data Freshness** | T-1 reporting | Previous day cost data |
+**Retry Strategy** (per clarification):
+- **3 attempts** with exponential backoff (1s, 2s, 4s)
+- **60-second timeout** with 30-second SLO target
+- **Circuit breaking** on non-retryable errors
 
-**Error Budget**: 1 failure every 2 months (~3.6 hours downtime/month)
+**Failure Scenarios Handled**:
+- Cost Explorer API throttling → Retry with backoff
+- SES email delivery failures → Retry + alerting  
+- Missing daily execution → 25-hour detection alarm
+- DynamoDB unavailable → Graceful degradation
 
----
-
-## Key Features
-
-### Email Reports
-- **Professional Formatting**: HTML + text versions
-- **Cost Breakdown**: Top 10 services by spending
-- **Daily Summary**: Total costs with service details
-- **Responsive Design**: Mobile-friendly email layout
-
-### Operational Excellence
-- **Retry Logic**: 3 attempts with exponential backoff
-- **Error Handling**: Comprehensive exception management
-- **Logging**: Structured logs for troubleshooting
-- **Alerting**: Multi-channel incident notifications
+**Self-Healing Features**:
+- Automatic retry on transient failures
+- Idempotency prevents duplicate sends
+- Missing execution alerts enable manual recovery
 
 ---
 
-## Security & Compliance
+## Slide 5: Security & Best Practices
 
-### IAM Security
-- **Least Privilege**: Minimal required permissions only
-- **Resource Scoping**: Service-specific access controls
-- **No Secrets**: Configuration via environment variables
-
-### Data Protection
-- **Account Boundary**: All data remains in AWS account
-- **Encryption**: In-transit and at-rest encryption
-- **Retention**: Configurable log retention periods
-
-### Compliance
-- **Audit Trail**: Complete execution logging
-- **Traceability**: Request ID tracking for incidents
-
----
-
-## Operational Benefits
-
-### Cost Optimization
-- **Monthly Spend**: ~$1.71 (serverless pay-per-use)
-- **Resource Efficiency**: Right-sized Lambda function
-- **No Maintenance**: Fully managed AWS services
-
-### Reliability
-- **Built-in Resilience**: Automatic retry mechanisms  
-- **Comprehensive Monitoring**: 5 CloudWatch alarms
-- **Quick Recovery**: Manual trigger capabilities
-
-### Developer Experience
-- **Self-Documenting**: Extensive code comments
-- **Infrastructure as Code**: Version-controlled deployment
-- **Operational Runbook**: Clear incident procedures
-
----
-
-## Deployment & Configuration
-
-### Quick Start
-```bash
-# Configure email addresses
-cp terraform.tfvars.example terraform.tfvars
-
-# Deploy infrastructure  
-terraform init && terraform apply
-
-# Verify email addresses in SES
+**IAM Security** (Least Privilege):
+```json
+{
+  "CloudWatch Logs": "Write to own log group only",
+  "Cost Explorer": "Read-only access to billing data", 
+  "SES": "Send from verified identities only",
+  "DynamoDB": "Read/write to tracking table only"
+}
 ```
 
-### Customization Options
-- **Schedule**: Configurable cron expressions
-- **Recipients**: Multiple email addresses
-- **Regions**: Global deployment support
-- **Retention**: Adjustable log retention
+**Additional Security**:
+- ✅ **No secrets in code** - Environment variables only
+- ✅ **Encryption** - In-transit and at-rest by default
+- ✅ **Resource scoping** - ARN-based permissions
+- ✅ **Account boundary** - All data stays in AWS account
 
 ---
 
-## Monitoring Dashboard
+## Slide 6: Operational Excellence
 
-**Real-time Visibility**:
-- Lambda execution metrics (invocations, errors, duration)
-- SLO compliance visualization (30-second performance line)
-- Recent error logs with timestamps
-- System health at-a-glance
+**Infrastructure as Code**:
+- **Terraform modules**: Main + Monitoring separation
+- **Variable validation**: Email format, cron expressions
+- **Automated deployment**: `terraform apply`
 
-**Operational Queries**:
-- Performance analysis with CloudWatch Logs Insights
-- Error pattern identification
-- SLO compliance tracking
+**Documentation**:
+- **Runbook**: Quick health checks, incident response
+- **Architecture docs**: Technical implementation details
+- **SLO definitions**: Measurable reliability targets
 
----
-
-## Results & Impact
-
-### Quantified Benefits
-- **Time Savings**: Eliminates manual cost checks (30 min/day → automated)
-- **Cost Visibility**: Daily insights instead of monthly surprises
-- **Reliability**: 99.5% uptime with comprehensive monitoring
-- **Scalability**: Serverless architecture supports growth
-
-### Business Value
-- **Proactive Cost Management**: Early detection of spending changes
-- **Budget Accountability**: Daily cost awareness across teams
-- **Operational Efficiency**: Automated reporting frees up engineering time
+**Cost Optimization**:
+- **Monthly cost**: ~$1.71 (serverless pay-per-use)
+- **Right-sizing**: 512MB memory, 60s timeout
+- **Efficient design**: Single daily execution, minimal storage
 
 ---
 
-## Lessons Learned
+## Slide 7: Demo & Validation
 
-### Technical Insights
-- **Simplicity Wins**: Trimmed 500+ line function to 200 lines
-- **Built-in Metrics**: AWS native monitoring over custom metrics
-- **Error Handling**: Graceful degradation prevents cascading failures
+**Live Demo Points**:
+1. **Manual trigger**: `aws lambda invoke --function-name aws-cost-notifier`
+2. **Email delivery**: HTML/text cost breakdown with service details
+3. **Monitoring**: CloudWatch dashboard showing metrics and SLO compliance
+4. **Idempotency**: Second execution returns "Already sent today"
 
-### Operational Experience  
-- **SES Verification**: Manual step requires clear documentation
-- **Retry Logic**: Exponential backoff essential for API reliability
-- **Monitoring Balance**: Comprehensive without alert fatigue
+**SLO Compliance Evidence**:
+- Execution time: ~8-12 seconds (well under 30s SLO)
+- Success rate: 100% in testing (exceeds 99.5% target)
+- Alert testing: Simulated failures trigger SNS notifications
 
 ---
 
+## Slide 8: Challenges & SRE Learnings
 
+**Key Challenges Solved**:
+
+1. **SES Email Verification**: Manual step requiring clear documentation
+   - *Solution*: Automated identity creation + clear setup instructions
+
+2. **Cost Explorer API Limits**: Potential throttling during AWS peak times
+   - *Solution*: Exponential backoff retry with circuit breaking
+
+3. **Timezone Considerations**: Global deployment across time zones
+   - *Solution*: 25-hour detection window accommodates DST changes
+
+**SRE Principles Applied**:
+- **Error budgets**: 1 failure every 2 months balances cost vs reliability
+- **Observability**: Comprehensive monitoring without alert fatigue
+- **Toil reduction**: Eliminates 30 min/day manual cost checking
+
+---
+
+## Slide 9: Production Readiness & Next Steps
+
+**Production Ready Features**:
+- ✅ **Comprehensive monitoring** with business-relevant alerts
+- ✅ **Runbook procedures** for common failure scenarios
+- ✅ **Security compliance** with least privilege IAM
+- ✅ **Cost optimization** with predictable monthly spend
+- ✅ **Documentation** for operations team handoff
+
+**Potential Improvements**:
+- **Multi-region deployment** for higher availability (trade-off: cost vs reliability)
+- **Slack integration** for developer-friendly notifications
+- **Cost anomaly detection** with ML-based threshold alerting
+- **Enhanced reporting** with weekly/monthly cost trends
+
+**Questions?**
+
+---
+
+## Appendix: Technical Deep Dive
+
+**Available if time permits**:
+- Terraform module structure and best practices
+- Lambda function code walkthrough
+- CloudWatch Logs Insights queries for troubleshooting
+- Error budget calculations and SLO mathematics

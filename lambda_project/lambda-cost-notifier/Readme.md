@@ -14,12 +14,28 @@ This project implements an automated daily cost notification system that:
 ## Architecture
 
 ```
-EventBridge (8 AM UTC) → Lambda Function → Cost Explorer API
-                                      ↓
-DynamoDB (tracking) ← SES (email) ← Email Formatter
-                                      ↓
-CloudWatch Logs ← CloudWatch Alarms → SNS → Email Alerts
+EventBridge (8 AM UTC) 
+    │
+    ▼
+Lambda Function
+    │
+    ├─→ DynamoDB (check if already sent)
+    ├─→ Cost Explorer API (get yesterday's costs)
+    ├─→ SES (send email to admin@company.com)
+    └─→ DynamoDB (record successful send)
+    │
+    ▼
+CloudWatch Logs → CloudWatch Alarms → SNS → Alert Emails
 ```
+
+## How It Works
+
+1. **EventBridge** triggers Lambda daily at 8 AM UTC
+2. **Lambda** checks DynamoDB to prevent duplicate sends
+3. **Lambda** queries Cost Explorer for yesterday's spending
+4. **Lambda** formats data into HTML email and sends via SES
+5. **Lambda** records execution in DynamoDB 
+6. **CloudWatch** monitors and alerts on failures
 
 ## Features
 
@@ -120,10 +136,12 @@ ses_region   = "us-east-1"               # SES region
 
 ```hcl
 # Common schedule expressions:
-schedule_expression = "cron(0 8 * * ? *)"   # 8 AM UTC daily
-schedule_expression = "cron(0 14 * * ? *)"  # 9 AM EST daily
+schedule_expression = "cron(0 8 * * ? *)"     # 8 AM UTC daily
+schedule_expression = "cron(0 14 * * ? *)"    # 9 AM EST daily
 schedule_expression = "cron(0 8 ? * MON-FRI *)"  # Weekdays only
 ```
+
+**Note:** All times are in UTC. 8 AM UTC = 3 AM EST / 12 AM PST. Consider your business hours when setting the schedule.
 
 ### Logging and Retention
 
@@ -258,10 +276,10 @@ The Lambda function uses least-privilege permissions:
 
 ```bash
 # Update Lambda function code
-terraform apply -target=aws_lambda_function.cost_notifier
+terraform apply -target=aws_lambda_function.main_cluster
 
 # Update monitoring configuration
-terraform apply -target=module.monitoring
+terraform apply -target=aws_cloudwatch_metric_alarm.lambda_errors
 
 # Full infrastructure refresh
 terraform apply -refresh-only
