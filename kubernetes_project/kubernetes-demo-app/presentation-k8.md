@@ -161,7 +161,6 @@ resource "local_file" # kubeconfig generation
 ## Slide 7: Operational Capabilities
 
 **What Works Today**:
-- **Application deployment**: All manifests ready and tested
 - **Health monitoring**: Kubernetes probes functional
 - **Auto-scaling**: HPA works once metrics-server installed
 - **Load balancing**: AWS NLB distributes traffic
@@ -246,18 +245,3 @@ kubectl get events --sort-by=.metadata.creationTimestamp
 - Implement automated CI/CD pipeline  
 - Add ingress controller to reduce LoadBalancer costs
 - Enhance security with network policies and private endpoints
-
-**Ready for Questions**: Technical deep-dive on any component or design decision
-
----
-
-## Questions & Discussion
-
-**Available for Deep-Dive**:
-- Flask middleware implementation for observability
-- Kubernetes probe configuration and timing decisions
-- Terraform resource dependencies and state management
-- HPA scaling mathematics and behavior
-- Container security hardening approach
-
-**Live Demo Ready**: Complete working system available for demonstration
